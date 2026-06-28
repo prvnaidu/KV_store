@@ -90,11 +90,3 @@ OK
 * Request-Response Communication
 * In-Memory Databases
 
-## Future Improvements
-
-* Thread safety using `std::mutex`
-* Linux support using POSIX sockets
-* Improved command validation
-* Better persistence format
-* Custom networking protocol
-* Web dashboard

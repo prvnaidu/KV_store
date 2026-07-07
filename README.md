@@ -372,17 +372,3 @@ This project helped implement and understand:
 * Persistence mechanisms
 
 ---
-
-# Future Improvements
-
-Possible improvements:
-
-* Graceful server shutdown handling
-* Better command parser
-* Support for larger values
-* Authentication system
-* More advanced persistence mechanism
-* HTTP API layer
-* Replication support
-
----

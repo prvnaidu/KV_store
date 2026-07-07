@@ -1,6 +1,6 @@
 # Multi-threaded TCP Key-Value Store in C++
 
-A lightweight Redis-inspired key-value database built from scratch in C++.
+A Redis-inspired key-value database built from scratch in C++.
 
 This project implements a custom TCP client-server architecture with a thread pool, concurrent request handling, an in-memory database engine, TTL-based expiration, and file persistence.
 
@@ -239,7 +239,7 @@ Example:
 Client:
 
 ```
-SET username prave
+SET username praveen
 ```
 
 Flow:
@@ -342,14 +342,15 @@ Start the client:
 Example:
 
 ```
-Enter command: SET name prave
+Enter command: SET name praveen
+
 
 SERVER: OK
 
 
 Enter command: GET name
 
-SERVER: prave
+SERVER: praveen
 ```
 
 ---

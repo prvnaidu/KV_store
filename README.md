@@ -386,7 +386,3 @@ Possible improvements:
 * Replication support
 
 ---
-
-# Author
-
-Built as a systems programming project to explore networking, databases, and concurrent backend design using C++.

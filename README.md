@@ -1,100 +1,391 @@
-# KV Store
+# Multi-threaded TCP Key-Value Store in C++
 
-A multi-threaded TCP Key-Value Store built in C++ using Winsock.
+A lightweight Redis-inspired key-value database built from scratch in C++.
 
-This project allows multiple clients to connect to a server over TCP and perform database operations such as storing, retrieving, deleting, and persisting key-value pairs. The database supports key expiration (TTL) and file-based persistence.
+This project implements a custom TCP client-server architecture with a thread pool, concurrent request handling, an in-memory database engine, TTL-based expiration, and file persistence.
 
-## Features
+The goal of this project was to understand how real-world backend systems handle networking, concurrency, request processing, and data storage.
 
-* In-memory key-value database using `unordered_map`
-* TCP server using Winsock
-* TCP client using Winsock
-* Multi-client support using `std::thread`
-* Key expiration (TTL)
-* File persistence
-* Concurrent client handling
-* Command-based interface
+---
 
-## Supported Commands
+# Features
 
-| Command            | Description                              |
-| ------------------ | ---------------------------------------- |
-| SET key value      | Store a key-value pair                   |
-| GET key            | Retrieve the value associated with a key |
-| DEL key            | Delete a key                             |
-| EXISTS key         | Check whether a key exists               |
-| EXPIRE key seconds | Set expiration time for a key            |
-| TTL key            | Get remaining lifetime of a key          |
-| SAVE               | Save the database to disk                |
-| LOAD               | Load the database from disk              |
-| EXIT               | Disconnect the client                    |
+## TCP Client-Server Communication
 
-## Architecture
+* Built using Windows Winsock API
+* Custom TCP-based request-response communication
+* Supports multiple simultaneous client connections
+* Implements a lightweight text-based command protocol
 
-```text
-Client
-   |
-TCP Socket
-   |
-Server
-   |
-Database
-   |
-File Storage
+---
+
+## In-Memory Key-Value Database
+
+The database engine uses hash-based storage:
+
+* Fast key-value lookup using `unordered_map`
+* Supports basic database operations
+* Thread-safe access using mutex synchronization
+
+Supported commands:
+
+| Command              | Description                  |
+| -------------------- | ---------------------------- |
+| `SET key value`      | Store a key-value pair       |
+| `GET key`            | Retrieve a value             |
+| `DEL key`            | Delete a key                 |
+| `EXISTS key`         | Check whether a key exists   |
+| `EXPIRE key seconds` | Add expiration time to a key |
+| `TTL key`            | Get remaining lifetime       |
+| `SAVE`               | Persist database to disk     |
+| `LOAD`               | Restore database from disk   |
+| `EXIT`               | Close client connection      |
+
+---
+
+# System Architecture
+
+```
+                    Client
+                      |
+                      |
+                 TCP Connection
+                      |
+                      |
+              Winsock TCP Server
+                      |
+                      |
+                   accept()
+                      |
+                      |
+              ThreadPool Queue
+                      |
+        --------------------------------
+        |              |               |
+     Worker 1       Worker 2        Worker 3
+        |              |               |
+        --------------------------------
+                      |
+                      |
+              Client Handler
+                      |
+                      |
+                 Database Engine
+                      |
+          --------------------------
+          |                        |
+    Key-Value Store          TTL Manager
+          |
+          |
+      data.txt
+    Persistence Layer
 ```
 
-## Technologies Used
+---
+
+# Thread Pool Design
+
+The server uses a custom fixed-size thread pool.
+
+Instead of creating a new thread for every client connection:
+
+* Worker threads are created once during server startup.
+* Incoming client sockets are placed into a shared queue.
+* Available workers process connections from the queue.
+
+Architecture:
+
+```
+Client Connection
+        |
+        v
+ Client Queue
+        |
+        v
+ Worker Thread
+        |
+        v
+ Client Handler
+```
+
+Benefits:
+
+* Avoids repeated thread creation overhead
+* Allows concurrent client handling
+* Provides controlled resource usage
+
+---
+
+# Concurrency Handling
+
+The project demonstrates practical multithreading concepts:
+
+## Mutex Protection
+
+Shared resources are protected using mutex locks.
+
+Protected components:
+
+* Client connection queue
+* Database storage
+* Persistence operations
+
+This prevents race conditions when multiple worker threads access shared data.
+
+---
+
+## Condition Variable Synchronization
+
+Worker threads do not continuously poll the queue.
+
+Instead:
+
+* Workers sleep when no requests are available.
+* New client connections wake waiting workers.
+* Shutdown signals wake all workers.
+
+This follows the producer-consumer design pattern.
+
+---
+
+# Graceful ThreadPool Shutdown
+
+The ThreadPool supports clean worker termination.
+
+Shutdown process:
+
+```
+Server exits
+      |
+      v
+ThreadPool destructor
+      |
+      v
+stop flag enabled
+      |
+      v
+Workers notified
+      |
+      v
+Worker threads exit
+      |
+      v
+Threads joined safely
+```
+
+This prevents:
+
+* orphan threads
+* premature termination
+* resource leaks
+
+---
+
+# TTL Expiration System
+
+The database supports key expiration.
+
+Example:
+
+```
+EXPIRE session 60
+```
+
+Internally:
+
+* Expiration timestamps are stored separately.
+* Requests check whether keys have expired.
+* Expired keys are removed automatically during access.
+
+Supported:
+
+```
+EXPIRE key seconds
+TTL key
+```
+
+---
+
+# Persistence
+
+The database supports saving and loading data.
+
+## SAVE
+
+Stores database contents into:
+
+```
+data.txt
+```
+
+The file stores:
+
+```
+key value expiration_time
+```
+
+## LOAD
+
+Restores stored data back into memory.
+
+This provides basic durability beyond the lifetime of the server process.
+
+---
+
+# Request Processing Flow
+
+Example:
+
+Client:
+
+```
+SET username prave
+```
+
+Flow:
+
+```
+Client
+ |
+TCP Socket
+ |
+Server accept()
+ |
+ThreadPool Queue
+ |
+Worker Thread
+ |
+ClientHandler
+ |
+Database.set()
+ |
+Response sent back
+```
+
+Response:
+
+```
+OK
+```
+
+---
+
+# Technologies Used
 
 * C++
-* Winsock2
+* Winsock API
 * TCP/IP Networking
-* Multithreading (`std::thread`)
+* Multithreading
+* std::thread
+* std::mutex
+* std::condition_variable
+* STL Containers
 * File I/O
-* STL Containers (`unordered_map`)
-* String Parsing (`stringstream`)
 
-## How It Works
+---
 
-1. The server initializes Winsock and starts listening on port 8080.
-2. Clients connect to the server using TCP sockets.
-3. Each client connection is handled in a separate thread.
-4. Commands received from clients are parsed and executed on the database.
-5. Results are sent back to the client.
-6. Data can be saved to disk and loaded when required.
+# Project Structure
 
-## Example Session
+```
+KV_store/
 
-```text
-SET name praveen
-OK
+├── Server.cpp
+├── Server.h
 
-GET name
-praveen
+├── Client.cpp
 
-EXISTS name
-YES
+├── ThreadPool.cpp
+├── ThreadPool.h
 
-DEL name
-OK
+├── ClientHandler.cpp
+├── ClientHandler.h
+
+├── Database.cpp
+├── Database.h
+
+├── data.txt
+└── main.cpp
 ```
 
-## Concepts Learned
+---
 
-* TCP Client-Server Architecture
-* Socket Programming
-* Winsock API
-* Multithreading
-* Concurrent Client Handling
-* File Persistence
-* Time-To-Live (TTL) Systems
-* Request-Response Communication
-* In-Memory Databases
+# Build Instructions
 
-## Future Improvements
+Compile the server:
 
-* Thread safety using `std::mutex`
-* Linux support using POSIX sockets
-* Improved command validation
-* Better persistence format
-* Custom networking protocol
-* Web dashboard
+```bash
+g++ -std=c++17 Server.cpp ThreadPool.cpp ClientHandler.cpp Database.cpp main.cpp -o server.exe -lws2_32
+```
+
+Compile the client:
+
+```bash
+g++ -std=c++17 Client.cpp -o client.exe -lws2_32
+```
+
+---
+
+# Running the Project
+
+Start the server:
+
+```bash
+./server.exe
+```
+
+Start the client:
+
+```bash
+./client.exe
+```
+
+Example:
+
+```
+Enter command: SET name prave
+
+SERVER: OK
+
+
+Enter command: GET name
+
+SERVER: prave
+```
+
+---
+
+# Concepts Demonstrated
+
+This project helped implement and understand:
+
+* TCP socket programming
+* Client-server architecture
+* Network communication
+* Thread pools
+* Producer-consumer pattern
+* Thread synchronization
+* Mutex locking
+* Condition variables
+* Resource cleanup using destructors
+* Database design basics
+* Persistence mechanisms
+
+---
+
+# Future Improvements
+
+Possible improvements:
+
+* Graceful server shutdown handling
+* Better command parser
+* Support for larger values
+* Authentication system
+* More advanced persistence mechanism
+* HTTP API layer
+* Replication support
+
+---
+
+# Author
+
+Built as a systems programming project to explore networking, databases, and concurrent backend design using C++.

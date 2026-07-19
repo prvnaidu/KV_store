@@ -61,8 +61,8 @@ void handleClient(SOCKET clientSocket, Database &db)
             response = db.del(key) ? "OK" : "Key not found";
         }
         else if (operation == "EXPIRE")
-        {
-            db.expire(key, stoi(value));
+        {    int seconds= stoi(value);
+            db.expire(key, seconds);
             response = "OK";
         }
         else if (operation == "TTL")

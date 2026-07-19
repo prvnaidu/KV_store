@@ -1,14 +1,9 @@
 #include "Database.h"
-#include <unordered_map>
 #include <chrono>
 #include <fstream>
 
 using namespace std;
 using namespace chrono;
-
-unordered_map<string, string> db;
-
-unordered_map<string, long long> expiryTime;
 
 long long getCurrentTime()
 {
@@ -19,18 +14,32 @@ long long getCurrentTime()
         .count();
 }
 
+static bool isExpiredUnlocked(
+    const string &key,
+    unordered_map<string, long long> &expiryTime)
+{
+    auto it = expiryTime.find(key);
+    if (it == expiryTime.end())
+    {
+        return false;
+    }
+    return getCurrentTime() > it->second;
+}
+
 void Database::set(string key, string value)
 {
+    lock_guard<mutex> lock(dbMutex);
     db[key] = value;
 }
 
 string Database::get(string key)
 {
-    if (isExpired(key))
+    lock_guard<mutex> lock(dbMutex);
+
+    if (isExpiredUnlocked(key, expiryTime))
     {
         db.erase(key);
         expiryTime.erase(key);
-
         return "Key not found";
     }
 
@@ -44,9 +53,12 @@ string Database::get(string key)
 
 bool Database::del(string key)
 {
+    lock_guard<mutex> lock(dbMutex);
+
     if (db.find(key) != db.end())
     {
         db.erase(key);
+        expiryTime.erase(key);
         return true;
     }
 
@@ -55,7 +67,9 @@ bool Database::del(string key)
 
 bool Database::exists(string key)
 {
-    if (isExpired(key))
+    lock_guard<mutex> lock(dbMutex);
+
+    if (isExpiredUnlocked(key, expiryTime))
     {
         db.erase(key);
         expiryTime.erase(key);
@@ -66,52 +80,50 @@ bool Database::exists(string key)
 
 void Database::expire(string key, int seconds)
 {
+    lock_guard<mutex> lock(dbMutex);
     expiryTime[key] = getCurrentTime() + seconds;
 }
 
 bool Database::isExpired(string key)
 {
-    if (expiryTime.find(key) == expiryTime.end())
-    {
-        return false;
-    }
-
-    long long now = getCurrentTime();
-
-    return now > expiryTime[key];
+    lock_guard<mutex> lock(dbMutex);
+    return isExpiredUnlocked(key, expiryTime);
 }
 
 long long Database::ttl(string key)
 {
-    if (isExpired(key))
+    lock_guard<mutex> lock(dbMutex);
+
+    if (isExpiredUnlocked(key, expiryTime))
     {
         db.erase(key);
         expiryTime.erase(key);
-
         return -1;
     }
 
-    if (expiryTime.find(key) == expiryTime.end())
+    auto it = expiryTime.find(key);
+    if (it == expiryTime.end())
     {
         return -1;
     }
 
-    long long now = getCurrentTime();
-
-    return expiryTime[key] - now;
+    return it->second - getCurrentTime();
 }
 
 void Database::save()
 {
+    lock_guard<mutex> lock(dbMutex);
+
     ofstream file("data.txt");
 
     for (const auto &entry : db)
     {
-        if (expiryTime.find(entry.first) != expiryTime.end())
+        auto it = expiryTime.find(entry.first);
+        if (it != expiryTime.end())
         {
             file << entry.first << " "
                  << entry.second << " "
-                 << expiryTime[entry.first] << "\n";
+                 << it->second << "\n";
         }
         else
         {
@@ -126,6 +138,8 @@ void Database::save()
 
 void Database::load()
 {
+    lock_guard<mutex> lock(dbMutex);
+
     ifstream file("data.txt");
 
     string key;
